@@ -84,13 +84,16 @@ Doesn't matter what gets written here.
 The following interaction holds:
 
 @racketinput[(require "markup.rkt")]
-@racketresult['("\n" "\n" "Doesn't matter what gets written here." "\n" "\n" |#<void>| "\n")]
+@racketresult[Normally: '("\n" "\n" "Doesn't matter what gets written here." "\n" "\n" |#<void>| "\n")]
 @racketinput[doc]
 @racketresult["Overridden"]
 
 Here you can see the body before it gets cleaned up. The @racket[void]
 value is what the @racket[(define (make-doc) ...)] evaluated to within
 the document, and the newlines come from the Scribble reader.
+
+This feature is useful as a simple way for documents to define
+their own layout, namely without needing a templating system.
 
 @subsection{Example: Using Other Language Features}
 
