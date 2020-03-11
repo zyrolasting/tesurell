@@ -33,7 +33,7 @@
       #`(module content racket/base
           (require tesurell/lib)
           (provide doc)
-          (define doc (run-markup #,preval #'code))
+          (define doc (run-markup '#,preval #'code))
           (module+ main
             (writeln doc)))))
 
