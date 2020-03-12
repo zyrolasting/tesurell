@@ -13,7 +13,8 @@
 
 Tesurell is a markup language that supports inline use of other
 @litchar{#lang}s, including itself. When used as a module, Tesurell
-acts as sugar for reading and using @litchar{#lang}s via input ports.
+helps you use @litchar{#lang}s via input ports, and helps you
+define other languages that support inline @litchar{#lang}s.
 
 @section{Motivation}
 When I write Racket programs using different languages I end up with a
@@ -23,27 +24,29 @@ want to bounce between files to express one composite idea.
 
 Other libraries like @tt{multi-lang} and @tt{polyglot} address this
 problem by writing Racket modules to disk for later processing. But
-sometimes disk activity and working with the filesystem are
-interruptions, and Tesurell aims to minimize that.
+sometimes disk activity and the filesystem are interruptions. Tesurell
+aims to minimize that.
 
-@section{Tesurell as a Markup Language}
+Dancing between notations can also be really fun and productive for
+creative types. Tesurell gives Racket the LaTeX-like ability to swap
+out notations to some desired effect when writing.
+
+@section{Guide}
 If you can write Scribble, you can write Tesurell markup. They both
 use @racketmodname[scribble/reader], and use @racket[(provide doc)] to
-share content. If you run a Tesurell module directly using
-DrRacket or the @litchar{racket} launcher, then Racket will print the
-document in @racket[write] mode. Each Tesurell module provides all
-bindings from @racketmodname[racket/base], plus those in the
-@secref{reference} section.
+share content. If you run a Tesurell module directly using DrRacket or
+the @litchar{racket} launcher, it will evaluate @racket[(write
+doc)]. Each Tesurell module provides all bindings from
+@racketmodname[racket/base], plus those in the @secref{reference}
+section.
 
 The differences are more interesting. Tesurell documents do not
 prescribe any document semantics because other languages already do
-that. Since Tesurell allows convenient module-embedding, you can
-assemble notations to your preference.
+that. It is up to you to assemble notations to your preference.
 
 @subsection{Example: Trivial Case}
 You can @racket[embed] a @litchar{#lang} and require
-the module in the same document. This is NOT equivalent
-to writing @racket[module] forms (See @racket[module/port] for why).
+the module in the same document.
 
 @codeblock|{
 #lang tesurell
@@ -113,20 +116,21 @@ output.
 }|
 
 @require[@rename-in['other-a [doc a]]]
-@require[@rename-in['other-a [doc b]]]
+@require[@rename-in['other-b [doc b]]]
 @(define (make-doc . _) (list a b))
 }|
 
 @subsection{Example: Self-hosting}
-Tesurell can self-host, but be warned that every Tesurell document
-owns its own isolated namespace. This means that a Tesurell
-subdocument cannot see anything declared in the containing Tesurell
-document.
+Tesurell can self-host, but be warned that a Tesurell subdocument
+cannot see anything in the containing Tesurell document.
 
 You could get around that by interpolating code within a subdocument,
-but using string interpolation to build code is often a bad idea. It's
-better to just use Tesurell subdocuments to perform contained
-mechanical adjustments.
+but using string interpolation to build code can be dangerous. It's
+better to use Tesurell subdocuments to perform mechanical adjustments,
+or use @racket[make-tesurell-lang].
+
+Here's an example of a subdocument that overrides @racket[doc], while
+the parent document uses the default representation of @racket[doc].
 
 @codeblock|{
 #lang tesurell
@@ -150,7 +154,6 @@ The following interaction holds:
 
 @racketinput[doc]
 @racketresult['("Gonna get meta." (pre "Preformatted\n      text\n   document"))]
-
 
 @subsection{Example: Inline Language Demo}
 Since Tesurell supports inline Racket modules, you can also use it to
@@ -197,6 +200,7 @@ The following interaction holds:
             "positive integers to"
             5050)]
 
+
 @section[#:tag "reference"]{Reference}
 
 @defproc[(module/port [id symbol?] [autorequire symbol?] [in input-port?] [ns namespace? (current-namespace)]) any/c]{
@@ -209,10 +213,12 @@ will return the value bound to @racket[autorequire] by the
 input module. Otherwise, @racket[module/port] will return
 @racket[(void)].
 
-@bold{BEWARE:} The compiled module is never cached, and sibling
-modules cannot @racket[require] each other via this form. Only use
-this for small expressions of code that are not shared by other
-documents.
+@bold{BEWARE:} Like @racketmodname[racket/load], the modules defined
+here are evaluated dynamically and are therefore not compiled. Two modules
+defined by this procedure cannot @racket[require] each other via this
+form. Unlike @racketmodname[racket/load], however, the modules can
+@racket[provide] bindings. For best results, only use this for small
+expressions of code that are not shared by other documents.
 }
 
 @defproc[(embed [id symbol?] [autorequire (or/c symbol? #f) #f] [str string?] ...) any/c]{
@@ -227,26 +233,50 @@ This is a markup-friendly form of @racket[module/port].
 (define data "I am from an inline module.")
 }|}|}
 
-@defproc[(make-tesurell-lang [top-level-form any/c '#f])
+@defproc[(make-tesurell-lang [wrap (-> syntax? syntax?) default-doc-module])
                              (values (-> input-port?)
                                      (-> (or/c #f ) input-port?))]{
-Returns a @racket[read] and @racket[read-syntax] procedure, in that order.
-
-@margin-note{@litchar{#lang tesurell}'s implementation came from
-applying this procedure with the defaults shown.}
+@margin-note{@racket[(make-tesurell-lang default-doc-module)] implements @litchar{#lang tesurell}}
+Returns a @racket[read] and @racket[read-syntax] procedure, in that
+order.
 
 The read procedures use @racket[read-syntax-inside] from
-@racketmodname[scribble/reader] to parse content, but leaves it up to
-you to decide what to do from there.
+@racketmodname[scribble/reader] to parse content, then generates code
+that runs the instructions in the markup. Each will return the
+appropriate variant of @racket[(wrap body)], where @racket[body] is
+code that evaluates the markup language, and @racket[wrap] is a syntax
+transformer that returns an enclosing @racket[module]
+form. @racket[body] consists entirely of top-level expressions and
+is dependent on any assumptions made by @racket[wrap].
 
-At run-time, a new base namespace @racket[N] is created for the
-document. @racket[(eval top-level-form N)] runs before evaluating the
-markup in case you want to furnish each document with the same
-bindings.
+@racket[body] introduces some bindings of interest:
 
-The provided @racket[doc] identifier from the expanded module binds to
-@racket[(reformat-doc body)], where @racket[body] is a list
-of elements produced by evaluating read @"@"-forms.
+@itemlist[
+@item{@racket[$raw]: a list containing data produced by evaluating the markup read from the input source code.}
+@item{@racket[$module-namespace]: the namespace of the module impacted by the evaluated code.}
+]
+}
+
+@defproc[(default-doc-module [body syntax?]) syntax?]{
+This is the default @racket[wrap] procedure for
+@racket[make-tesurell-lang].  It implements rules re: @racket[doc] as
+shown below.
+
+@codeblock|{
+(define (default-doc-module body)
+  #`(module content racket/base
+      (provide doc)
+      #,body
+      (define post
+        (namespace-variable-value
+         'make-doc
+         #t
+         (λ () reformat-doc)
+         $module-namespace))
+      (define doc (post $raw))
+      (module+ main
+        (writeln doc))))
+}|
 }
 
 @defproc[(reformat-doc [doc (listof any/c)]) (listof any/c)]{
@@ -303,5 +333,4 @@ on how that string was formatted in the markup.
 @racketresult[
 '(1000 " meters")
 ]
-
 }

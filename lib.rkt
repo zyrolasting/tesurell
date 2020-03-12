@@ -1,12 +1,13 @@
 #lang racket/base
 
 (provide make-tesurell-lang
-         run-markup
          embed
          module/port
-         reformat-doc)
+         reformat-doc
+         default-doc-module)
 (require scribble/reader
          syntax/modread
+         syntax/strip-context
          racket/list
          racket/string)
 
@@ -27,36 +28,36 @@
                   (append (aggregate-strings strings)
                           (reformat-doc remaining))))))))
 
-(define (make-tesurell-lang [preval '#f])
+(define (default-doc-module stx)
+  #`(module content racket/base
+      (provide doc)
+      #,stx
+      (define post
+        (namespace-variable-value
+         'make-doc
+         #t
+         (λ () reformat-doc)
+         $module-namespace))
+      (define doc (post $raw))
+      (module+ main
+        (writeln doc))))
+
+(define (make-tesurell-lang [wrap default-doc-module])
   (define (markup-read-syntax src in)
     (with-syntax ([code (read-syntax-inside (object-name in) in)])
-      #`(module content racket/base
-          (require tesurell/lib)
-          (provide doc)
-          (define doc (run-markup '#,preval #'code))
-          (module+ main
-            (writeln doc)))))
+      (wrap #`(begin
+                (require tesurell/lib)
+                (define-namespace-anchor $anchor)
+                (define $module-namespace (namespace-anchor->namespace $anchor))
+                (define $raw
+                  (for/list ([expr (in-list '#,(namespace-syntax-introduce (strip-context #'code)))])
+                    (eval expr $module-namespace)))))))
 
   (define (markup-read in)
     (syntax->datum (markup-read-syntax #f in)))
 
   (values markup-read
           markup-read-syntax))
-
-(define (eval-iter exprs acc)
-  (if (eq? exprs '())
-      (reverse acc)
-      (eval-iter (cdr exprs)
-                 (cons (eval (syntax->datum (car exprs))) acc))))
-
-(define (run-markup preval stx)
-  (define ns (make-base-namespace))
-  (parameterize ([current-namespace ns]
-                 [current-module-declare-name #f])
-    (namespace-set-variable-value! 'embed embed #t ns #t)
-    (eval preval)
-    (define raw (eval-iter (syntax-e (namespace-syntax-introduce stx)) '()))
-    ((namespace-variable-value 'make-doc #t (λ _ reformat-doc)) raw)))
 
 (define (module/port id sym in [ns (current-namespace)])
   (define (read-thunk) (read-syntax (object-name in) in))
@@ -70,9 +71,10 @@
         (eval `(begin (require (only-in ',id ,sym)) ,sym))
         (void))))
 
+(define (inline-module i s . strs)
+  (module/port i s (open-input-string (apply string-append strs))))
+
 (define (embed id sym . strs)
-  (define (inline-module i s . strs)
-    (module/port i s (open-input-string (apply string-append strs))))
   (if (string? sym)
       (apply inline-module id #f (cons sym strs))
       (apply inline-module id sym strs)))
