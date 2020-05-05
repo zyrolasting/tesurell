@@ -121,13 +121,15 @@ output.
 }|
 
 @subsection{Example: Self-hosting}
-Tesurell can self-host, but be warned that a Tesurell subdocument
-cannot see anything in the containing Tesurell document.
+Tesurell can self-host in the sense that it can recognize
+@litchar{#lang tesurell} subdocuments and any extensions you may wish
+to install. Note that a Tesurell subdocument cannot see anything in
+the containing Tesurell document.
 
 You could get around that by interpolating code within a subdocument,
-but using string interpolation to build code can be dangerous. It's
-better to use Tesurell subdocuments to perform mechanical adjustments,
-or use @racket[make-tesurell-lang].
+but using string interpolation to build code can be dangerous.
+Do not use Tesurell subdocuments as an alternative to Racket's
+built-in means to define new @litchar{#lang}s.
 
 Here's an example of a subdocument that overrides @racket[doc], while
 the parent document uses the default representation of @racket[doc].
@@ -201,6 +203,16 @@ The following interaction holds:
             5050)]
 
 
+@section{Markup Semantics}
+
+Each @litchar{#lang tesurell} module has the following bindings available:
+
+@itemlist[
+@item{@racket[$src]: a complete path to the document being evaluated on the file system.}
+@item{@racket[$raw]: a list containing data produced by evaluating the markup read from the input source code.}
+@item{@racket[$module-namespace]: the namespace of the module impacted by the evaluated code.}
+]
+
 @section[#:tag "reference"]{Reference}
 
 @defproc[(module/port [id symbol?] [autorequire symbol?] [in input-port?] [ns namespace? (current-namespace)]) any/c]{
@@ -232,52 +244,6 @@ This is a markup-friendly form of @racket[module/port].
 (provide data)
 (define data "I am from an inline module.")
 }|}|}
-
-@defproc[(make-tesurell-lang [wrap (-> syntax? syntax?) default-doc-module])
-                             (values (-> input-port?)
-                                     (-> (or/c #f ) input-port?))]{
-@margin-note{@racket[(make-tesurell-lang default-doc-module)] implements @litchar{#lang tesurell}}
-Returns a @racket[read] and @racket[read-syntax] procedure, in that
-order.
-
-The read procedures use @racket[read-syntax-inside] from
-@racketmodname[scribble/reader] to parse content, then generates code
-that runs the instructions in the markup. Each will return the
-appropriate variant of @racket[(wrap body)], where @racket[body] is
-code that evaluates the markup language, and @racket[wrap] is a syntax
-transformer that returns an enclosing @racket[module]
-form. @racket[body] consists entirely of top-level expressions and
-is dependent on any assumptions made by @racket[wrap].
-
-@racket[body] introduces some bindings of interest:
-
-@itemlist[
-@item{@racket[$raw]: a list containing data produced by evaluating the markup read from the input source code.}
-@item{@racket[$module-namespace]: the namespace of the module impacted by the evaluated code.}
-]
-}
-
-@defproc[(default-doc-module [body syntax?]) syntax?]{
-This is the default @racket[wrap] procedure for
-@racket[make-tesurell-lang].  It implements rules re: @racket[doc] as
-shown below.
-
-@codeblock|{
-(define (default-doc-module body)
-  #`(module content racket/base
-      (provide doc)
-      #,body
-      (define post
-        (namespace-variable-value
-         'make-doc
-         #t
-         (λ () reformat-doc)
-         $module-namespace))
-      (define doc (post $raw))
-      (module+ main
-        (writeln doc))))
-}|
-}
 
 @defproc[(reformat-doc [doc (listof any/c)]) (listof any/c)]{
 This procedure acts as the default @racket[make-doc] implementation

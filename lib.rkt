@@ -1,12 +1,9 @@
 #lang racket/base
 
-(provide make-tesurell-lang
-         embed
+(provide embed
          module/port
-         reformat-doc
-         default-doc-module)
-(require scribble/reader
-         syntax/modread
+         reformat-doc)
+(require syntax/modread
          syntax/strip-context
          racket/list
          racket/string)
@@ -27,37 +24,6 @@
                   (cons next (reformat-doc (cdr doc)))
                   (append (aggregate-strings strings)
                           (reformat-doc remaining))))))))
-
-(define (default-doc-module stx)
-  #`(module content racket/base
-      (provide doc)
-      #,stx
-      (define post
-        (namespace-variable-value
-         'make-doc
-         #t
-         (λ () reformat-doc)
-         $module-namespace))
-      (define doc (post $raw))
-      (module+ main
-        (writeln doc))))
-
-(define (make-tesurell-lang [wrap default-doc-module])
-  (define (markup-read-syntax src in)
-    (with-syntax ([code (read-syntax-inside (object-name in) in)])
-      (wrap #`(begin
-                (require tesurell/lib)
-                (define-namespace-anchor $anchor)
-                (define $module-namespace (namespace-anchor->namespace $anchor))
-                (define $raw
-                  (for/list ([expr (in-list '#,(namespace-syntax-introduce (strip-context #'code)))])
-                    (eval expr $module-namespace)))))))
-
-  (define (markup-read in)
-    (syntax->datum (markup-read-syntax #f in)))
-
-  (values markup-read
-          markup-read-syntax))
 
 (define (module/port id sym in [ns (current-namespace)])
   (define (read-thunk) (read-syntax (object-name in) in))
